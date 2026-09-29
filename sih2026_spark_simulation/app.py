@@ -361,6 +361,7 @@ with tab2:
 # ---------------------------------------------------------------------------- TAB 3: 3D CAD ASSEMBLY
 # ---------------------------------------------------------------------------- TAB 3: 3D CAD ASSEMBLY
 # ---------------------------------------------------------------------------- TAB 3: 3D CAD ASSEMBLY
+# ---------------------------------------------------------------------------- TAB 3: 3D CAD ASSEMBLY
 with tab3:
     st.subheader("🛠️ 3D CAD Assembly & Selective Z-Axis Explosion")
     
@@ -405,7 +406,7 @@ with tab3:
     </head>
     <body>
         <div id="canvas-container">
-            <div id="loading">Loading CAD Model & Axes...</div>
+            <div id="loading">Centering Model on (0,0,0) Axis...</div>
         </div>
         <script>
             const container = document.getElementById('canvas-container');
@@ -444,14 +445,19 @@ with tab3:
                     bytes[i] = binaryString.charCodeAt(i);
                 }}
 
-                new THREE.GLTFLoader().parse(bytes.buffer, '', function (gltf) {{
+                new THREE.GLTFLoader().parse(bytes.2buffer || bytes.buffer, '', function (gltf) {{
                     loadedModel = gltf.scene;
-                    
-                    // 1. Calculate strict bounding box across all visual meshes
+                    scene.add(loadedModel);
+
+                    // 1. Force matrix update so world positions are evaluated accurately
+                    loadedModel.updateMatrixWorld(true);
+
+                    // 2. Compute strict World-Space bounding box based exclusively on meshes
                     const box = new THREE.Box3();
                     loadedModel.traverse((child) => {{
                         if (child.isMesh) {{
-                            box.expandByObject(child);
+                            const childBox = new THREE.Box3().setFromObject(child);
+                            box.union(childBox);
                         }}
                     }});
 
@@ -459,12 +465,12 @@ with tab3:
                     const size = box.getSize(new THREE.Vector3());
                     const maxDim = Math.max(size.x, size.y, size.z);
 
-                    // 2. Center model perfectly at world origin (0, 0, 0)
+                    // 3. Shift the entire model group so its true world center lands exactly on (0, 0, 0)
                     loadedModel.position.sub(center);
-                    scene.add(loadedModel);
+                    loadedModel.updateMatrixWorld(true);
                     loadingEl.style.display = 'none';
 
-                    // 3. Add visual Axis Helper and Grid Helper right at (0,0,0) to verify origin placement
+                    // 4. Add visual Axis & Grid Helpers perfectly at the (0,0,0) intersection
                     const axesHelper = new THREE.AxesHelper(maxDim * 0.8);
                     scene.add(axesHelper);
 
@@ -472,7 +478,7 @@ with tab3:
                     gridHelper.position.y = -size.y / 2;
                     scene.add(gridHelper);
 
-                    // 4. Frame camera tightly and lock OrbitControls target explicitly to (0,0,0)
+                    // 5. Frame camera tightly and lock OrbitControls target explicitly to (0,0,0)
                     const sphere = box.getBoundingSphere(new THREE.Sphere());
                     const radius = sphere.radius;
                     
@@ -484,7 +490,7 @@ with tab3:
                     controls.maxDistance = radius * 4.0;
                     controls.update();
 
-                    // 5. Selective Z-Axis translation for cylinders using 0.2 multiplier
+                    // 6. Store initial local positions and apply selective Z-axis explosion
                     loadedModel.traverse((child) => {{
                         if (child.isMesh) {{
                             if (!child.userData.initialPos) {{
