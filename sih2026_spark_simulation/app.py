@@ -14,6 +14,8 @@ import fuze_engine as fuze
 import cad_engine as cad
 import hil_engine as hil
 import report_engine as rep
+import base64
+import os
 
 # =============================================================================
 # PAGE CONFIGURATION & DEFENSE HUD STYLING
@@ -356,12 +358,157 @@ with tab2:
     components.html(leaflet_html, height=520)
 
 # ------------------------------------------------------------------ TAB 3: 3D CAD ASSEMBLY
+# ---------------------------------------------------------------------------- TAB 3: 3D CAD ASSEMBLY
 with tab3:
-    st.subheader("🛠️ 3D Exploded CAD Nose Assembly Twin")
-    explosion_factor = st.slider("Exploded CAD Assembly Slider", 0.0, 1.0, 0.45, 0.05, help="Drag to separate internal S.P.A.R.K nose hardware sub-components.")
+    st.subheader("🛠️ 3D CAD Assembly & Selective Z-Axis Explosion")
     
-    cad_html = cad.generate_3d_cad_html(explosion_factor)
-    components.html(cad_html, height=500)
+    explosion_factor = st.slider("Cylinder Z-Axis Separation Factor", 0.0, 1.0, 0.0, 0.01, help="Moves outer cylinders along the Z-axis to expose inner components")
+
+    import base64
+    import os
+
+    glb_filename = "spark_fuze_assembly.glb"
+    cad_base64_data = ""
+    if os.path.exists(glb_filename):
+        with open(glb_filename, "rb") as f:
+            cad_base64_data = base64.b64encode(f.read()).decode("utf-8")
+    else:
+        st.warning(f"⚠️ Could not find '{glb_filename}' in the root directory.")
+
+    threejs_html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body {{ margin: 0; background-color: #070B19; overflow: hidden; font-family: sans-serif; }}
+            #canvas-container {{ width: 100%; height: 520px; border-radius: 8px; border: 1px solid #1E293B; position: relative; }}
+            #loading {{ position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #38BDF8; font-size: 15px; font-weight: bold; pointer-events: none; }}
+        </style>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    </head>
+    <body>
+        <div id="canvas-container">
+            <div id="loading">Locking Pivot & Zooming CAD Model...</div>
+        </div>
+        <script>
+            const container = document.getElementById('canvas-container');
+            const loadingEl = document.getElementById('loading');
+            
+            const scene = new THREE.Scene();
+            const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
+            
+            const renderer = new THREE.WebGLRenderer({{ antialias: true, alpha: true }});
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            container.appendChild(renderer.domElement);
+
+            const controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+
+            // Tactical Lighting
+            scene.add(new THREE.AmbientLight(0xffffff, 0.9));
+            const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+            dirLight.position.set(10, 20, 15);
+            scene.add(dirLight);
+            
+            const backLight = new THREE.DirectionalLight(0x38BDF8, 0.5);
+            backLight.position.set(-10, -10, -15);
+            scene.add(backLight);
+
+            let loadedModel = null;
+            const sliderValue = {explosion_factor};
+            const base64Data = "{cad_base64_data}";
+
+            if (base64Data) {{
+                const binaryString = window.atob(base64Data);
+                const bytes = new Uint8Array(binaryString.length);
+                for (let i = 0; i < binaryString.length; i++) {{
+                    bytes[i] = binaryString.charCodeAt(i);
+                }}
+
+                new THREE.GLTFLoader().parse(bytes.buffer, '', function (gltf) {{
+                    loadedModel = gltf.scene;
+                    
+                    // 1. Calculate strict bounding box across all visual meshes
+                    const box = new THREE.Box3();
+                    loadedModel.traverse((child) => {{
+                        if (child.isMesh) {{
+                            box.expandByObject(child);
+                        }}
+                    }});
+
+                    const center = box.getCenter(new THREE.Vector3());
+                    const size = box.getSize(new THREE.Vector3());
+                    const maxDim = Math.max(size.x, size.y, size.z);
+
+                    // 2. Center model perfectly at world origin (0, 0, 0)
+                    loadedModel.position.sub(center);
+                    scene.add(loadedModel);
+                    loadingEl.style.display = 'none';
+
+                    // 3. Frame camera tightly and lock OrbitControls target explicitly to (0,0,0)
+                    const sphere = box.getBoundingSphere(new THREE.Sphere());
+                    const radius = sphere.radius;
+                    
+                    const distance = radius * 1.1; 
+                    camera.position.set(distance * 0.4, distance * 0.3, distance * 0.8);
+                    
+                    // CRITICAL FIX: Pinned target vector directly to the model's true center origin
+                    controls.target.set(0, 0, 0);
+                    controls.minDistance = radius * 0.05;
+                    controls.maxDistance = radius * 4.0;
+                    controls.update();
+
+                    // 4. Selective Z-Axis translation for cylinders using 0.2 multiplier
+                    loadedModel.traverse((child) => {{
+                        if (child.isMesh) {{
+                            if (!child.userData.initialPos) {{
+                                child.userData.initialPos = child.position.clone();
+                            }}
+                            
+                            const init = child.userData.initialPos;
+                            const meshName = child.name.toLowerCase();
+
+                            if (meshName.includes('cylinder001')) {{
+                                child.position.z = init.z + (sliderValue * maxDim * 0.2);
+                            }} 
+                            else if (meshName.includes('cylinder') && !meshName.includes('cylinder001')) {{
+                                child.position.z = init.z - (sliderValue * maxDim * 0.2);
+                            }} 
+                            else {{
+                                child.position.copy(init);
+                            }}
+                        }}
+                    }});
+
+                }}, null, (err) => {{ 
+                    console.error(err);
+                    loadingEl.innerText = "Error parsing CAD geometry."; 
+                }});
+            }} else {{
+                loadingEl.innerText = "GLB file data missing.";
+            }}
+
+            function animate() {{
+                requestAnimationFrame(animate);
+                controls.update();
+                renderer.render(scene, camera);
+            }}
+            animate();
+
+            window.addEventListener('resize', () => {{
+                camera.aspect = container.clientWidth / container.clientHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(container.clientWidth, container.clientHeight);
+            }});
+        </script>
+    </body>
+    </html>
+    """
+    components.html(threejs_html, height=540)
 
 # ------------------------------------------------------------------ TAB 4: MULTI-MODE FUZE
 with tab4:
@@ -467,3 +614,7 @@ with tab9:
 
 st.markdown("---")
 st.caption("Project S.P.A.R.K — Smart India Hackathon (SIH 2026) · Team AIZEN")
+
+
+
+
