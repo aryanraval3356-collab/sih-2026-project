@@ -359,9 +359,6 @@ with tab2:
 
 # ------------------------------------------------------------------ TAB 3: 3D CAD ASSEMBLY
 # ---------------------------------------------------------------------------- TAB 3: 3D CAD ASSEMBLY
-# ---------------------------------------------------------------------------- TAB 3: 3D CAD ASSEMBLY
-# ---------------------------------------------------------------------------- TAB 3: 3D CAD ASSEMBLY
-# ---------------------------------------------------------------------------- TAB 3: 3D CAD ASSEMBLY
 with tab3:
     st.subheader("🛠️ 3D CAD Assembly & Selective Z-Axis Explosion")
     
@@ -445,7 +442,7 @@ with tab3:
                     bytes[i] = binaryString.charCodeAt(i);
                 }}
 
-                new THREE.GLTFLoader().parse(bytes.2buffer || bytes.buffer, '', function (gltf) {{
+                new THREE.GLTFLoader().parse(bytes.buffer, '', function (gltf) {{
                     loadedModel = gltf.scene;
                     scene.add(loadedModel);
 
@@ -537,7 +534,6 @@ with tab3:
     </html>
     """
     components.html(threejs_html, height=540)
-
 # ------------------------------------------------------------------ TAB 4: MULTI-MODE FUZE
 with tab4:
     st.subheader("💣 STANAG 4369 Multi-Mode Fuze & Blast Footprint Engine")
