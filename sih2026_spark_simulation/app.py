@@ -358,44 +358,48 @@ with tab2:
     components.html(leaflet_html, height=520)
 
 # ------------------------------------------------------------------ TAB 3: 3D CAD ASSEMBLY
-# ---------------------------------------------------------------------------- TAB 3: 3D CAD ASSEMBLY
 with tab3:
-    st.subheader("🛠️ 3D CAD Assembly & Selective Z-Axis Explosion")
+    st.subheader("🛠️ 3D CAD Assembly & Exploded View Animation Twin")
     
-    explosion_factor = st.slider("Cylinder Z-Axis Separation Factor", 0.0, 1.0, 0.0, 0.01, help="Moves outer cylinders along the Z-axis to expose inner components")
+    col_ctrl1, col_ctrl2 = st.columns([3, 1])
+    with col_ctrl1:
+        explosion_factor = st.slider("Explosion Timeline Scrubber (Fitted 0% ➔ 100% Exploded)", 0.0, 1.0, 0.0, 0.01, 
+                                     help="Scrubs the animation timeline from fully assembled initial shell (0%) to fully exploded components (100%)")
+    with col_ctrl2:
+        st.metric("Explosion State", f"{int(explosion_factor * 100)}%", delta=("Fitted" if explosion_factor == 0 else "Exploded"), delta_color="off")
 
     import base64
     import os
 
-    # Robust path lookup for local & GitHub / Streamlit Cloud deployment
-    current_dir = os.path.dirname(os.path.abspath(__file__)) if "__file__" in locals() else os.getcwd()
-    possible_paths = [
-        "spark_fuze_assembly.glb",
-        os.path.join(current_dir, "spark_fuze_assembly.glb"),
-        os.path.join(os.getcwd(), "spark_fuze_assembly.glb")
-    ]
-
-    glb_filename = None
-    for p in possible_paths:
-        if os.path.exists(p):
-            glb_filename = p
-            break
-
+    glb_filename = "spark_fuze_assembly.glb"
     cad_base64_data = ""
-    if glb_filename:
+    if os.path.exists(glb_filename):
         with open(glb_filename, "rb") as f:
             cad_base64_data = base64.b64encode(f.read()).decode("utf-8")
     else:
-        st.error(f"⚠️ Could not find 'spark_fuze_assembly.glb'. Checked paths: {possible_paths}")
+        st.warning(f"⚠️ Could not find '{glb_filename}' in the root directory.")
 
     threejs_html = f"""
     <!DOCTYPE html>
     <html>
     <head>
+        <meta charset="utf-8" />
         <style>
-            body {{ margin: 0; background-color: #070B19; overflow: hidden; font-family: sans-serif; }}
-            #canvas-container {{ width: 100%; height: 520px; border-radius: 8px; border: 1px solid #1E293B; position: relative; }}
+            body {{ margin: 0; background-color: #070B19; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }}
+            #canvas-container {{ width: 100%; height: 530px; border-radius: 8px; border: 1px solid #1E293B; position: relative; }}
             #loading {{ position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #38BDF8; font-size: 15px; font-weight: bold; pointer-events: none; }}
+            .hud-overlay {{
+                position: absolute; top: 12px; left: 14px; z-index: 100;
+                background: rgba(15, 23, 42, 0.88); border: 1px solid #1E293B; border-left: 4px solid #10B981;
+                padding: 10px 14px; border-radius: 6px; font-size: 0.82rem; color: #E2E8F0; pointer-events: none;
+            }}
+            .reset-btn {{
+                position: absolute; top: 12px; right: 14px; z-index: 100;
+                background: #1E293B; border: 1px solid #334155; color: #38BDF8;
+                padding: 6px 12px; border-radius: 6px; font-size: 0.80rem; font-weight: 600; cursor: pointer;
+                transition: background 0.2s;
+            }}
+            .reset-btn:hover {{ background: #334155; color: #10B981; }}
         </style>
         <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
         <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -403,18 +407,27 @@ with tab3:
     </head>
     <body>
         <div id="canvas-container">
-            <div id="loading">Centering Model on (0,0,0) Axis...</div>
+            <div id="loading">Centering & Auto-Framing 3D CAD Assembly...</div>
+            <div class="hud-overlay">
+                <span style="color: #10B981; font-weight: bold;">🎯 S.P.A.R.K 155mm PGK CAD TWIN</span><br>
+                • Timeline: {int(explosion_factor * 100)}% Exploded View<br>
+                • Mouse: Left-Drag: Rotate | Scroll: Zoom | Right-Drag: Pan
+            </div>
+            <button class="reset-btn" onclick="resetCamera()">🎯 Reset View</button>
         </div>
         <script>
             const container = document.getElementById('canvas-container');
             const loadingEl = document.getElementById('loading');
             
             const scene = new THREE.Scene();
-            const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
+            scene.background = new THREE.Color(0x070B19);
+            
+            const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.01, 1000);
             
             const renderer = new THREE.WebGLRenderer({{ antialias: true, alpha: true }});
             renderer.setSize(container.clientWidth, container.clientHeight);
             renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.shadowMap.enabled = true;
             container.appendChild(renderer.domElement);
 
             const controls = new THREE.OrbitControls(camera, renderer.domElement);
@@ -422,18 +435,33 @@ with tab3:
             controls.dampingFactor = 0.05;
 
             // Tactical Lighting
-            scene.add(new THREE.AmbientLight(0xffffff, 0.9));
-            const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
-            dirLight.position.set(10, 20, 15);
-            scene.add(dirLight);
+            scene.add(new THREE.AmbientLight(0xffffff, 0.85));
             
-            const backLight = new THREE.DirectionalLight(0x38BDF8, 0.5);
-            backLight.position.set(-10, -10, -15);
-            scene.add(backLight);
+            const keyLight = new THREE.DirectionalLight(0xffffff, 1.2);
+            keyLight.position.set(10, 20, 15);
+            scene.add(keyLight);
+            
+            const fillLight = new THREE.DirectionalLight(0x38BDF8, 0.6);
+            fillLight.position.set(-15, 10, -10);
+            scene.add(fillLight);
+            
+            const rimLight = new THREE.DirectionalLight(0x10B981, 0.5);
+            rimLight.position.set(0, -15, 10);
+            scene.add(rimLight);
 
             let loadedModel = null;
+            let defaultCamPos = new THREE.Vector3();
+            let defaultTarget = new THREE.Vector3(0, 0, 0);
             const sliderValue = {explosion_factor};
             const base64Data = "{cad_base64_data}";
+
+            function resetCamera() {{
+                if (loadedModel) {{
+                    camera.position.copy(defaultCamPos);
+                    controls.target.copy(defaultTarget);
+                    controls.update();
+                }}
+            }}
 
             if (base64Data) {{
                 const binaryString = window.atob(base64Data);
@@ -444,17 +472,28 @@ with tab3:
 
                 new THREE.GLTFLoader().parse(bytes.buffer, '', function (gltf) {{
                     loadedModel = gltf.scene;
-                    scene.add(loadedModel);
 
-                    // 1. Force matrix update so world positions are evaluated accurately
-                    loadedModel.updateMatrixWorld(true);
-
-                    // 2. Compute strict World-Space bounding box based exclusively on meshes
-                    const box = new THREE.Box3();
+                    // 1. Hide stray distant artifact meshes (> 5m from origin)
                     loadedModel.traverse((child) => {{
                         if (child.isMesh) {{
-                            const childBox = new THREE.Box3().setFromObject(child);
-                            box.union(childBox);
+                            child.castShadow = true;
+                            child.receiveShadow = true;
+                            if (child.material) {{
+                                child.material.side = THREE.DoubleSide;
+                            }}
+                            const p = child.position;
+                            if (Math.abs(p.y) > 5.0 || Math.abs(p.x) > 5.0 || Math.abs(p.z) > 10.0 || child.name.toLowerCase().startsWith('body')) {{
+                                child.visible = false;
+                            }}
+                        }}
+                    }});
+
+                    // 2. Calculate true bounding box of the fuze assembly
+                    loadedModel.updateMatrixWorld(true);
+                    const box = new THREE.Box3();
+                    loadedModel.traverse((child) => {{
+                        if (child.isMesh && child.visible) {{
+                            box.expandByObject(child);
                         }}
                     }});
 
@@ -462,52 +501,37 @@ with tab3:
                     const size = box.getSize(new THREE.Vector3());
                     const maxDim = Math.max(size.x, size.y, size.z);
 
-                    // 3. Shift the entire model group so its true world center lands exactly on (0, 0, 0)
+                    // 3. Center model at world origin (0, 0, 0)
                     loadedModel.position.sub(center);
-                    loadedModel.updateMatrixWorld(true);
+                    scene.add(loadedModel);
                     loadingEl.style.display = 'none';
 
-                    // 4. Add visual Axis & Grid Helpers perfectly at the (0,0,0) intersection
-                    const axesHelper = new THREE.AxesHelper(maxDim * 0.8);
-                    scene.add(axesHelper);
+                    // 4. Auto-Frame camera so model fills ~75% of viewport
+                    const fovRad = camera.fov * (Math.PI / 180);
+                    const fitDistance = (maxDim / 2) / Math.tan(fovRad / 2) * 1.35;
 
-                    const gridHelper = new THREE.GridHelper(maxDim * 2, 10, 0x38BDF8, 0x1E293B);
-                    gridHelper.position.y = -size.y / 2;
-                    scene.add(gridHelper);
+                    defaultCamPos.set(fitDistance * 0.65, fitDistance * 0.35, fitDistance * 0.85);
+                    camera.position.copy(defaultCamPos);
+                    camera.near = fitDistance / 1000;
+                    camera.far = fitDistance * 50;
+                    camera.updateProjectionMatrix();
 
-                    // 5. Frame camera tightly and lock OrbitControls target explicitly to (0,0,0)
-                    const sphere = box.getBoundingSphere(new THREE.Sphere());
-                    const radius = sphere.radius;
-                    
-                    const distance = radius * 1.1; 
-                    camera.position.set(distance * 0.4, distance * 0.3, distance * 0.8);
-                    
-                    controls.target.set(0, 0, 0);
-                    controls.minDistance = radius * 0.05;
-                    controls.maxDistance = radius * 4.0;
+                    controls.target.copy(defaultTarget);
+                    controls.minDistance = fitDistance * 0.1;
+                    controls.maxDistance = fitDistance * 8.0;
                     controls.update();
 
-                    // 6. Store initial local positions and apply selective Z-axis explosion
-                    loadedModel.traverse((child) => {{
-                        if (child.isMesh) {{
-                            if (!child.userData.initialPos) {{
-                                child.userData.initialPos = child.position.clone();
-                            }}
-                            
-                            const init = child.userData.initialPos;
-                            const meshName = child.name.toLowerCase();
-
-                            if (meshName.includes('cylinder001')) {{
-                                child.position.z = init.z + (sliderValue * maxDim * 0.2);
-                            }} 
-                            else if (meshName.includes('cylinder') && !meshName.includes('cylinder001')) {{
-                                child.position.z = init.z - (sliderValue * maxDim * 0.2);
-                            }} 
-                            else {{
-                                child.position.copy(init);
-                            }}
-                        }}
-                    }});
+                    // 5. Scrub Blender Exploded-View Keyframe Animation
+                    if (gltf.animations && gltf.animations.length > 0) {{
+                        const mixer = new THREE.AnimationMixer(loadedModel);
+                        let maxDuration = 0;
+                        gltf.animations.forEach((clip) => {{
+                            maxDuration = Math.max(maxDuration, clip.duration);
+                            const action = mixer.clipAction(clip);
+                            action.play();
+                        }});
+                        mixer.setTime(sliderValue * (maxDuration > 0 ? maxDuration : 1.0));
+                    }}
 
                 }}, null, (err) => {{ 
                     console.error(err);
@@ -533,7 +557,8 @@ with tab3:
     </body>
     </html>
     """
-    components.html(threejs_html, height=540)
+    components.html(threejs_html, height=550)
+
 # ------------------------------------------------------------------ TAB 4: MULTI-MODE FUZE
 with tab4:
     st.subheader("💣 STANAG 4369 Multi-Mode Fuze & Blast Footprint Engine")
