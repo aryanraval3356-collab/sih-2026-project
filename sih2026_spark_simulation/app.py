@@ -370,14 +370,49 @@ with tab3:
 
     import base64
     import os
+    import glob
 
-    glb_filename = "spark_fuze_assembly.glb"
+    # Robust multi-path resolution for Streamlit Community Cloud (Linux) & local runs
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    cwd_dir = os.getcwd()
+
+    # Search candidates across script dir, cwd, and common subfolders
+    search_dirs = [script_dir, cwd_dir, os.path.join(script_dir, "models"), os.path.join(script_dir, "assets")]
+    found_glb_path = None
+
+    # 1. Exact or case-insensitive match for spark_fuze_assembly.glb
+    for d in search_dirs:
+        if os.path.exists(d):
+            for fname in os.listdir(d):
+                if fname.lower() == "spark_fuze_assembly.glb":
+                    found_glb_path = os.path.join(d, fname)
+                    break
+        if found_glb_path:
+            break
+
+    # 2. Fallback: Search for any .glb or .gltf file in the repository
+    if not found_glb_path:
+        for d in search_dirs:
+            if os.path.exists(d):
+                for fname in os.listdir(d):
+                    if fname.lower().endswith(".glb") or fname.lower().endswith(".gltf"):
+                        found_glb_path = os.path.join(d, fname)
+                        break
+            if found_glb_path:
+                break
+
     cad_base64_data = ""
-    if os.path.exists(glb_filename):
-        with open(glb_filename, "rb") as f:
-            cad_base64_data = base64.b64encode(f.read()).decode("utf-8")
+    if found_glb_path and os.path.exists(found_glb_path):
+        # Check file size (ensure it's not a broken Git LFS pointer text file)
+        fsize = os.path.getsize(found_glb_path)
+        if fsize < 1000:
+            st.error(f"⚠️ Found '{os.path.basename(found_glb_path)}', but its size is only {fsize} bytes. This usually happens if Git LFS was used and the actual binary was not pushed to GitHub.")
+        else:
+            with open(found_glb_path, "rb") as f:
+                cad_base64_data = base64.b64encode(f.read()).decode("utf-8")
     else:
-        st.warning(f"⚠️ Could not find '{glb_filename}' in the root directory.")
+        st.warning("⚠️ Could not find 'spark_fuze_assembly.glb' in the repository. Please ensure 'spark_fuze_assembly.glb' is uploaded directly to your GitHub repository.")
+        st.caption(f"Searched in: `{script_dir}`. Files present: `{', '.join(os.listdir(script_dir)[:8])}...`")
 
     threejs_html = f"""
     <!DOCTYPE html>
