@@ -360,6 +360,7 @@ with tab2:
 # ------------------------------------------------------------------ TAB 3: 3D CAD ASSEMBLY
 # ---------------------------------------------------------------------------- TAB 3: 3D CAD ASSEMBLY
 # ---------------------------------------------------------------------------- TAB 3: 3D CAD ASSEMBLY
+# ---------------------------------------------------------------------------- TAB 3: 3D CAD ASSEMBLY
 with tab3:
     st.subheader("🛠️ 3D CAD Assembly & Selective Z-Axis Explosion")
     
@@ -379,7 +380,6 @@ with tab3:
     glb_filename = None
     for p in possible_paths:
         if os.path.exists(p):
-        
             glb_filename = p
             break
 
@@ -405,7 +405,7 @@ with tab3:
     </head>
     <body>
         <div id="canvas-container">
-            <div id="loading">Loading & Zooming CAD Model...</div>
+            <div id="loading">Loading CAD Model & Axes...</div>
         </div>
         <script>
             const container = document.getElementById('canvas-container');
@@ -464,7 +464,15 @@ with tab3:
                     scene.add(loadedModel);
                     loadingEl.style.display = 'none';
 
-                    // 3. Frame camera tightly and lock OrbitControls target explicitly to (0,0,0)
+                    // 3. Add visual Axis Helper and Grid Helper right at (0,0,0) to verify origin placement
+                    const axesHelper = new THREE.AxesHelper(maxDim * 0.8);
+                    scene.add(axesHelper);
+
+                    const gridHelper = new THREE.GridHelper(maxDim * 2, 10, 0x38BDF8, 0x1E293B);
+                    gridHelper.position.y = -size.y / 2;
+                    scene.add(gridHelper);
+
+                    // 4. Frame camera tightly and lock OrbitControls target explicitly to (0,0,0)
                     const sphere = box.getBoundingSphere(new THREE.Sphere());
                     const radius = sphere.radius;
                     
@@ -476,7 +484,7 @@ with tab3:
                     controls.maxDistance = radius * 4.0;
                     controls.update();
 
-                    // 4. Selective Z-Axis translation for cylinders using 0.2 multiplier
+                    // 5. Selective Z-Axis translation for cylinders using 0.2 multiplier
                     loadedModel.traverse((child) => {{
                         if (child.isMesh) {{
                             if (!child.userData.initialPos) {{
