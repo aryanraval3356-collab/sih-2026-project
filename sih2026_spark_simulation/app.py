@@ -359,6 +359,7 @@ with tab2:
 
 # ------------------------------------------------------------------ TAB 3: 3D CAD ASSEMBLY
 # ---------------------------------------------------------------------------- TAB 3: 3D CAD ASSEMBLY
+# ---------------------------------------------------------------------------- TAB 3: 3D CAD ASSEMBLY
 with tab3:
     st.subheader("🛠️ 3D CAD Assembly & Selective Z-Axis Explosion")
     
@@ -367,13 +368,27 @@ with tab3:
     import base64
     import os
 
-    glb_filename = "spark_fuze_assembly.glb"
+    # Robust path lookup for local & GitHub / Streamlit Cloud deployment
+    current_dir = os.path.dirname(os.path.abspath(__file__)) if "__file__" in locals() else os.getcwd()
+    possible_paths = [
+        "spark_fuze_assembly.glb",
+        os.path.join(current_dir, "spark_fuze_assembly.glb"),
+        os.path.join(os.getcwd(), "spark_fuze_assembly.glb")
+    ]
+
+    glb_filename = None
+    for p in possible_paths:
+        if os.path.exists(p):
+        
+            glb_filename = p
+            break
+
     cad_base64_data = ""
-    if os.path.exists(glb_filename):
+    if glb_filename:
         with open(glb_filename, "rb") as f:
             cad_base64_data = base64.b64encode(f.read()).decode("utf-8")
     else:
-        st.warning(f"⚠️ Could not find '{glb_filename}' in the root directory.")
+        st.error(f"⚠️ Could not find 'spark_fuze_assembly.glb'. Checked paths: {possible_paths}")
 
     threejs_html = f"""
     <!DOCTYPE html>
@@ -390,7 +405,7 @@ with tab3:
     </head>
     <body>
         <div id="canvas-container">
-            <div id="loading">Locking Pivot & Zooming CAD Model...</div>
+            <div id="loading">Loading & Zooming CAD Model...</div>
         </div>
         <script>
             const container = document.getElementById('canvas-container');
@@ -456,7 +471,6 @@ with tab3:
                     const distance = radius * 1.1; 
                     camera.position.set(distance * 0.4, distance * 0.3, distance * 0.8);
                     
-                    // CRITICAL FIX: Pinned target vector directly to the model's true center origin
                     controls.target.set(0, 0, 0);
                     controls.minDistance = radius * 0.05;
                     controls.maxDistance = radius * 4.0;
